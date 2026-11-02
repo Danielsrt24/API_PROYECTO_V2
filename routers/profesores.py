@@ -4,6 +4,8 @@ from typing import List
 
 from database import get_db
 from models.profesor import Profesor, ProfesorCreate, ProfesorUpdate, ProfesorResponse
+from models.usuario import Usuario
+from core.authorization import require_roles
 
 router = APIRouter(prefix="/profesores", tags=["Profesores"])
 
@@ -20,16 +22,24 @@ def obtener_profesor(profesor_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Profesor no encontrado")
     return profesor
 
-@router.post("/", response_model=ProfesorResponse, status_code=201)
+@router.post(
+    "/",
+    response_model=ProfesorResponse,
+    status_code=201,
+    dependencies=[Depends(require_roles("Director", "Subdirector"))],
+)
 def crear_profesor(data: ProfesorCreate, db: Session = Depends(get_db)):
-    if db.exec(select(Profesor).where(Profesor.cedula == data.cedula)).first():
-        raise HTTPException(status_code=400, detail="Ya existe un profesor con esa cédula")
-    
+    if data.id_usuario is not None:
+        usuario = db.get(Usuario, data.id_usuario)
+        if not usuario or not usuario.estado or usuario.rol != "Profesor":
+            raise HTTPException(status_code=400, detail="El usuario vinculado no es un profesor activo")
+        if db.exec(select(Profesor).where(Profesor.id_usuario == data.id_usuario)).first():
+            raise HTTPException(status_code=400, detail="El usuario ya tiene un perfil de profesor")
+
     nuevo = Profesor(
-        cedula=data.cedula,
+        id_usuario=data.id_usuario,
         nombre=data.nombre,
         email=data.email,
-        telefono=data.telefono,
         estado=True
     )
     db.add(nuevo)
@@ -37,23 +47,29 @@ def crear_profesor(data: ProfesorCreate, db: Session = Depends(get_db)):
     db.refresh(nuevo)
     return nuevo
 
-@router.put("/{profesor_id}", response_model=ProfesorResponse)
+@router.put(
+    "/{profesor_id}",
+    response_model=ProfesorResponse,
+    dependencies=[Depends(require_roles("Director", "Subdirector"))],
+)
 def editar_profesor(profesor_id: int, data: ProfesorUpdate, db: Session = Depends(get_db)):
     profesor = db.get(Profesor, profesor_id)
     if not profesor or not profesor.estado:
         raise HTTPException(status_code=404, detail="Profesor no encontrado")
     
-    if data.cedula: profesor.cedula = data.cedula
-    if data.nombre: profesor.nombre = data.nombre
-    if data.email: profesor.email = data.email
-    if data.telefono: profesor.telefono = data.telefono
-    
+    update_data = data.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(profesor, field, value)
+
     db.add(profesor)
     db.commit()
     db.refresh(profesor)
     return profesor
 
-@router.delete("/{profesor_id}")
+@router.delete(
+    "/{profesor_id}",
+    dependencies=[Depends(require_roles("Director", "Subdirector"))],
+)
 def eliminar_profesor(profesor_id: int, db: Session = Depends(get_db)):
     profesor = db.get(Profesor, profesor_id)
     if not profesor or not profesor.estado:

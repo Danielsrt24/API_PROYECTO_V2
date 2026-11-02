@@ -1,32 +1,46 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
 from typing import List
-from datetime import datetime
+from sqlalchemy.exc import IntegrityError
 
 from database import get_db
 from models.usuario import Usuario, UsuarioCreate, UsuarioUpdate, UsuarioResponse
 from core.helper import hash_password
+from core.authorization import require_roles
 
 router = APIRouter(prefix="/usuarios", tags=["Usuarios"])
 
-@router.get("/", response_model=List[UsuarioResponse])
+@router.get(
+    "/",
+    response_model=List[UsuarioResponse],
+    dependencies=[Depends(require_roles("Director", "Subdirector"))],
+)
 def listar_usuarios(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     return db.exec(
         select(Usuario).where(Usuario.estado == True).offset(skip).limit(limit)
     ).all()
 
-@router.get("/{usuario_id}", response_model=UsuarioResponse)
+@router.get(
+    "/{usuario_id}",
+    response_model=UsuarioResponse,
+    dependencies=[Depends(require_roles("Director", "Subdirector"))],
+)
 def obtener_usuario(usuario_id: int, db: Session = Depends(get_db)):
     usuario = db.get(Usuario, usuario_id)
     if not usuario or not usuario.estado:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     return usuario
 
-@router.post("/", response_model=UsuarioResponse, status_code=201)
+@router.post(
+    "/",
+    response_model=UsuarioResponse,
+    status_code=201,
+    dependencies=[Depends(require_roles("Director", "Subdirector"))],
+)
 def crear_usuario(data: UsuarioCreate, db: Session = Depends(get_db)):
     if db.exec(select(Usuario).where(Usuario.username == data.username)).first():
         raise HTTPException(status_code=400, detail="El usuario ya existe")
-    
+
     nuevo_usuario = Usuario(
         username=data.username,
         password_hash=hash_password(data.password),
@@ -36,60 +50,63 @@ def crear_usuario(data: UsuarioCreate, db: Session = Depends(get_db)):
         estado=True
     )
     db.add(nuevo_usuario)
-    db.commit()
-    db.refresh(nuevo_usuario)
-    
-    if data.rol == "Profesor":
-        try:
+
+    try:
+        if data.rol == "Profesor":
             from models.profesor import Profesor
-            
-            cedula_temporal = data.username
-            
-            profesor_existente = db.exec(
-                select(Profesor).where(Profesor.cedula == cedula_temporal)
-            ).first()
-            
-            if not profesor_existente:
-                nuevo_profesor = Profesor(
-                    cedula=cedula_temporal,
+
+            db.flush()
+            db.add(
+                Profesor(
+                    id_usuario=nuevo_usuario.id_usuario,
                     nombre=data.nombre,
                     email=data.email,
-                    telefono=None,
                     estado=True,
                 )
-                db.add(nuevo_profesor)
-                db.commit()
-                print(f"✅ Profesor '{data.nombre}' creado automáticamente")
-            else:
-                print(f"⚠️ Ya existía un profesor con cédula '{cedula_temporal}'")
-        except Exception as e:
-            print(f"⚠️ No se pudo crear el profesor automáticamente: {str(e)}")
-    
+            )
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="No se pudo crear el usuario") from exc
+
+    db.refresh(nuevo_usuario)
     return nuevo_usuario
 
-@router.put("/{usuario_id}", response_model=UsuarioResponse)
+@router.put(
+    "/{usuario_id}",
+    response_model=UsuarioResponse,
+    dependencies=[Depends(require_roles("Director", "Subdirector"))],
+)
 def editar_usuario(usuario_id: int, data: UsuarioUpdate, db: Session = Depends(get_db)):
     usuario = db.get(Usuario, usuario_id)
-    if not usuario or not usuario.estado:
+    if not usuario:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
-    
-    if data.nombre: usuario.nombre = data.nombre
-    if data.rol: usuario.rol = data.rol
-    if data.email: usuario.email = data.email
-    if data.password:
-        usuario.password_hash = hash_password(data.password)
-    
+
+    update_data = data.model_dump(exclude_unset=True)
+    password = update_data.pop("password", None)
+    for field, value in update_data.items():
+        setattr(usuario, field, value)
+    if password:
+        usuario.password_hash = hash_password(password)
+
     db.add(usuario)
     db.commit()
     db.refresh(usuario)
     return usuario
 
 @router.delete("/{usuario_id}")
-def eliminar_usuario(usuario_id: int, db: Session = Depends(get_db)):
+def eliminar_usuario(
+    usuario_id: int,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(require_roles("Director")),
+):
     usuario = db.get(Usuario, usuario_id)
     if not usuario or not usuario.estado:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
-    
+
+    if usuario.id_usuario == current_user.id_usuario:
+        raise HTTPException(status_code=400, detail="No puedes eliminarte a ti mismo")
+
     usuario.estado = False
     db.add(usuario)
     db.commit()

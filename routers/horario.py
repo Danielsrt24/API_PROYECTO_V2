@@ -6,6 +6,7 @@ from datetime import time
 from database import get_db
 from models.horario import Horario, HorarioCreate, HorarioUpdate, HorarioResponse
 from models.distribucion import Distribucion
+from core.authorization import require_roles
 
 router = APIRouter(prefix="/horario", tags=["Horario"])
 
@@ -28,7 +29,7 @@ def validar_choque(
     dia: str,
     hora_inicio: time,
     hora_fin: time,
-    exclude_id: int = None
+    exclude_id: int | None = None
 ) -> bool:
     distribucion_actual = db.get(Distribucion, id_distribucion)
     if not distribucion_actual:
@@ -41,7 +42,7 @@ def validar_choque(
         Horario.hora_fin > hora_inicio
     )
     
-    if exclude_id:
+    if exclude_id is not None:
         statement = statement.where(Horario.id_horario != exclude_id)
     
     horarios_existentes = db.exec(statement).all()
@@ -58,7 +59,12 @@ def validar_choque(
     
     return False
 
-@router.post("/", response_model=HorarioResponse, status_code=201)
+@router.post(
+    "/",
+    response_model=HorarioResponse,
+    status_code=201,
+    dependencies=[Depends(require_roles("Director", "Subdirector", "Secretaria"))],
+)
 def crear_horario(data: HorarioCreate, db: Session = Depends(get_db)):
     distribucion = db.get(Distribucion, data.id_distribucion)
     if not distribucion or not distribucion.estado:
@@ -87,17 +93,25 @@ def crear_horario(data: HorarioCreate, db: Session = Depends(get_db)):
     db.refresh(nuevo)
     return nuevo
 
-@router.put("/{horario_id}", response_model=HorarioResponse)
+@router.put(
+    "/{horario_id}",
+    response_model=HorarioResponse,
+    dependencies=[Depends(require_roles("Director", "Subdirector", "Secretaria"))],
+)
 def editar_horario(horario_id: int, data: HorarioUpdate, db: Session = Depends(get_db)):
     horario = db.get(Horario, horario_id)
     if not horario or not horario.estado:
         raise HTTPException(status_code=404, detail="Horario no encontrado")
     
-    if data.dia: horario.dia = data.dia
-    if data.hora_inicio: horario.hora_inicio = data.hora_inicio
-    if data.hora_fin: horario.hora_fin = data.hora_fin
-    if data.aula: horario.aula = data.aula
-    
+    update_data = data.model_dump(exclude_unset=True)
+    if any(update_data.get(field) is None for field in ("dia", "hora_inicio", "hora_fin") if field in update_data):
+        raise HTTPException(status_code=422, detail="Día y horas son campos obligatorios")
+    for field, value in update_data.items():
+        setattr(horario, field, value)
+
+    distribucion = db.get(Distribucion, horario.id_distribucion)
+    if not distribucion or not distribucion.estado:
+        raise HTTPException(status_code=404, detail="Distribución no encontrada")
     if horario.hora_inicio >= horario.hora_fin:
         raise HTTPException(status_code=400, detail="La hora de inicio debe ser menor que la hora fin")
     
@@ -112,7 +126,10 @@ def editar_horario(horario_id: int, data: HorarioUpdate, db: Session = Depends(g
     db.refresh(horario)
     return horario
 
-@router.delete("/{horario_id}")
+@router.delete(
+    "/{horario_id}",
+    dependencies=[Depends(require_roles("Director", "Subdirector", "Secretaria"))],
+)
 def eliminar_horario(horario_id: int, db: Session = Depends(get_db)):
     horario = db.get(Horario, horario_id)
     if not horario or not horario.estado:
@@ -139,7 +156,7 @@ def horario_por_seccion(seccion_id: int, db: Session = Depends(get_db)):
         Horario.estado == True
     ).order_by(Horario.dia, Horario.hora_inicio)
     
-    return db.exec(statement).all()
+    return db.exec(statement).all()  # ✅ CORREGIDO: Agregado .all()
 
 @router.get("/profesor/{profesor_id}", response_model=List[HorarioResponse])
 def horario_por_profesor(profesor_id: int, db: Session = Depends(get_db)):

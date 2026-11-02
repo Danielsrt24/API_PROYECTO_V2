@@ -8,7 +8,7 @@ from routers.permisos import router as permisos_router
 from routers.distribucion import router as distribucion_router
 from routers.horario import router as horario_router
 from routers.profesores import router as profesores_router
-from routers.secciones import router as secciones_router
+from routers.secciones import router as secciones_router  # ✅ NUEVO
 
 app = FastAPI(
     title="Sistema INDA API",
@@ -31,7 +31,7 @@ app.include_router(permisos_router, prefix="/api")
 app.include_router(distribucion_router, prefix="/api")
 app.include_router(horario_router, prefix="/api")
 app.include_router(profesores_router, prefix="/api")
-app.include_router(secciones_router, prefix="/api")
+app.include_router(secciones_router, prefix="/api")  # ✅ NUEVO
 
 @app.get("/")
 def read_root():

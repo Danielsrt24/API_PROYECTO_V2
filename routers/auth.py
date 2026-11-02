@@ -1,12 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlmodel import Session, select
-from datetime import datetime, timedelta
-import jwt
-
 from database import get_db
 from models.usuario import Usuario
-from config import settings
+from core.security import create_access_token
 from core.helper import verify_password
 
 router = APIRouter(prefix="/auth", tags=["Autenticación"])
@@ -21,15 +18,7 @@ def login(form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get
     if not verify_password(form.password, usuario.password_hash):
         raise HTTPException(status_code=401, detail="Credenciales incorrectas")
     
-    token = jwt.encode(
-        {
-            "sub": usuario.username,
-            "rol": usuario.rol,
-            "exp": datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-        },
-        settings.SECRET_KEY,
-        algorithm=settings.ALGORITHM
-    )
+    token = create_access_token({"sub": usuario.username, "rol": usuario.rol})
     
     return {
         "access_token": token,
