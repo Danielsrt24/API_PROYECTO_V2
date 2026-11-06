@@ -1,6 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from sqlmodel import Session, select
-from typing import List
+from typing import Annotated, List
 
 from database import get_db
 from models.profesor import Profesor, ProfesorCreate, ProfesorUpdate, ProfesorResponse
@@ -10,13 +10,17 @@ from core.authorization import require_roles
 router = APIRouter(prefix="/profesores", tags=["Profesores"])
 
 @router.get("/", response_model=List[ProfesorResponse])
-def listar_profesores(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+def listar_profesores(
+    skip: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=0)] = 100,
+    db: Session = Depends(get_db),
+):
     return db.exec(
         select(Profesor).where(Profesor.estado == True).offset(skip).limit(limit)
     ).all()
 
 @router.get("/{profesor_id}", response_model=ProfesorResponse)
-def obtener_profesor(profesor_id: int, db: Session = Depends(get_db)):
+def obtener_profesor(profesor_id: Annotated[int, Path(gt=0)], db: Session = Depends(get_db)):
     profesor = db.get(Profesor, profesor_id)
     if not profesor or not profesor.estado:
         raise HTTPException(status_code=404, detail="Profesor no encontrado")
@@ -52,7 +56,11 @@ def crear_profesor(data: ProfesorCreate, db: Session = Depends(get_db)):
     response_model=ProfesorResponse,
     dependencies=[Depends(require_roles("Director", "Subdirector"))],
 )
-def editar_profesor(profesor_id: int, data: ProfesorUpdate, db: Session = Depends(get_db)):
+def editar_profesor(
+    profesor_id: Annotated[int, Path(gt=0)],
+    data: ProfesorUpdate,
+    db: Session = Depends(get_db),
+):
     profesor = db.get(Profesor, profesor_id)
     if not profesor or not profesor.estado:
         raise HTTPException(status_code=404, detail="Profesor no encontrado")
@@ -70,7 +78,7 @@ def editar_profesor(profesor_id: int, data: ProfesorUpdate, db: Session = Depend
     "/{profesor_id}",
     dependencies=[Depends(require_roles("Director", "Subdirector"))],
 )
-def eliminar_profesor(profesor_id: int, db: Session = Depends(get_db)):
+def eliminar_profesor(profesor_id: Annotated[int, Path(gt=0)], db: Session = Depends(get_db)):
     profesor = db.get(Profesor, profesor_id)
     if not profesor or not profesor.estado:
         raise HTTPException(status_code=404, detail="Profesor no encontrado")

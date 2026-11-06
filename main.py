@@ -13,7 +13,10 @@ from routers.secciones import router as secciones_router  # ✅ NUEVO
 app = FastAPI(
     title="Sistema INDA API",
     description="API para el sistema de gestión académica INDA",
-    version="1.0.0"
+    version="1.0.0",
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
 )
 
 app.add_middleware(

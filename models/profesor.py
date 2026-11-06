@@ -82,7 +82,7 @@ class Profesor(ProfesorBase, table=True):
     
     id_profesor: Optional[int] = Field(default=None, primary_key=True)
     estado: bool = Field(default=True)
-    id_usuario: Optional[int] = Field(default=None)
+    id_usuario: Optional[int] = Field(default=None, gt=0)
     fecha_creacion: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
     __table_args__ = {"extend_existing": True}

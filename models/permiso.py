@@ -86,7 +86,7 @@ class PermisoResponse(SQLModel):
     model_config = ConfigDict(from_attributes=True)
 
     id_permiso: int
-    id_profesor: int
+    id_profesor: int = Field(gt=0)
     tipo_permiso: str
     fecha_inicio: date
     fecha_fin: date
@@ -110,9 +110,11 @@ class Permiso(SQLModel, table=True):
         default=None,
         max_digits=5,
         decimal_places=2,
+        ge=0,
+        le=24,
     )
     motivo: Optional[str] = None
     estado: str = Field(default="pendiente", max_length=20)
-    id_usuario_registro: int
+    id_usuario_registro: int = Field(gt=0)
     fecha_registro: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     comprobante: Optional[str] = Field(default=None, max_length=255)

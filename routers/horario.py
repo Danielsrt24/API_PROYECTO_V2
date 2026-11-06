@@ -1,6 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from sqlmodel import Session, select
-from typing import List
+from typing import Annotated, List
 from datetime import time
 
 from database import get_db
@@ -11,13 +11,17 @@ from core.authorization import require_roles
 router = APIRouter(prefix="/horario", tags=["Horario"])
 
 @router.get("/", response_model=List[HorarioResponse])
-def listar_horarios(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+def listar_horarios(
+    skip: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=0)] = 100,
+    db: Session = Depends(get_db),
+):
     return db.exec(
         select(Horario).where(Horario.estado == True).offset(skip).limit(limit)
     ).all()
 
 @router.get("/{horario_id}", response_model=HorarioResponse)
-def obtener_horario(horario_id: int, db: Session = Depends(get_db)):
+def obtener_horario(horario_id: Annotated[int, Path(gt=0)], db: Session = Depends(get_db)):
     horario = db.get(Horario, horario_id)
     if not horario or not horario.estado:
         raise HTTPException(status_code=404, detail="Horario no encontrado")
@@ -98,7 +102,11 @@ def crear_horario(data: HorarioCreate, db: Session = Depends(get_db)):
     response_model=HorarioResponse,
     dependencies=[Depends(require_roles("Director", "Subdirector", "Secretaria"))],
 )
-def editar_horario(horario_id: int, data: HorarioUpdate, db: Session = Depends(get_db)):
+def editar_horario(
+    horario_id: Annotated[int, Path(gt=0)],
+    data: HorarioUpdate,
+    db: Session = Depends(get_db),
+):
     horario = db.get(Horario, horario_id)
     if not horario or not horario.estado:
         raise HTTPException(status_code=404, detail="Horario no encontrado")
@@ -130,7 +138,7 @@ def editar_horario(horario_id: int, data: HorarioUpdate, db: Session = Depends(g
     "/{horario_id}",
     dependencies=[Depends(require_roles("Director", "Subdirector", "Secretaria"))],
 )
-def eliminar_horario(horario_id: int, db: Session = Depends(get_db)):
+def eliminar_horario(horario_id: Annotated[int, Path(gt=0)], db: Session = Depends(get_db)):
     horario = db.get(Horario, horario_id)
     if not horario or not horario.estado:
         raise HTTPException(status_code=404, detail="Horario no encontrado")
@@ -142,7 +150,7 @@ def eliminar_horario(horario_id: int, db: Session = Depends(get_db)):
     return {"message": "Horario desactivado"}
 
 @router.get("/seccion/{seccion_id}", response_model=List[HorarioResponse])
-def horario_por_seccion(seccion_id: int, db: Session = Depends(get_db)):
+def horario_por_seccion(seccion_id: Annotated[int, Path(gt=0)], db: Session = Depends(get_db)):
     distribuciones = db.exec(
         select(Distribucion).where(Distribucion.id_seccion == seccion_id, Distribucion.estado == True)
     ).all()
@@ -159,7 +167,7 @@ def horario_por_seccion(seccion_id: int, db: Session = Depends(get_db)):
     return db.exec(statement).all()  # ✅ CORREGIDO: Agregado .all()
 
 @router.get("/profesor/{profesor_id}", response_model=List[HorarioResponse])
-def horario_por_profesor(profesor_id: int, db: Session = Depends(get_db)):
+def horario_por_profesor(profesor_id: Annotated[int, Path(gt=0)], db: Session = Depends(get_db)):
     distribuciones = db.exec(
         select(Distribucion).where(Distribucion.id_profesor == profesor_id, Distribucion.estado == True)
     ).all()

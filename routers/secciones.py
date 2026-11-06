@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
-from typing import List
+from typing import Annotated, List
 
 from database import get_db
 from models.seccion import Seccion, SeccionCreate, SeccionUpdate, SeccionResponse
@@ -9,13 +10,17 @@ from core.authorization import require_roles
 router = APIRouter(prefix="/secciones", tags=["Secciones"])
 
 @router.get("/", response_model=List[SeccionResponse])
-def listar_secciones(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+def listar_secciones(
+    skip: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=0)] = 100,
+    db: Session = Depends(get_db),
+):
     return db.exec(
         select(Seccion).where(Seccion.estado == True).offset(skip).limit(limit)
     ).all()
 
 @router.get("/{seccion_id}", response_model=SeccionResponse)
-def obtener_seccion(seccion_id: int, db: Session = Depends(get_db)):
+def obtener_seccion(seccion_id: Annotated[int, Path(gt=0)], db: Session = Depends(get_db)):
     seccion = db.get(Seccion, seccion_id)
     if not seccion or not seccion.estado:
         raise HTTPException(status_code=404, detail="Sección no encontrada")
@@ -30,16 +35,24 @@ def obtener_seccion(seccion_id: int, db: Session = Depends(get_db)):
 def crear_seccion(data: SeccionCreate, db: Session = Depends(get_db)):
     stmt = select(Seccion).where(
         Seccion.nombre == data.nombre,
-        Seccion.nivel == data.nivel,
-        Seccion.letra == data.letra,
         Seccion.estado == True
     )
     if db.exec(stmt).first():
-        raise HTTPException(status_code=400, detail="Ya existe una sección con esos datos")
+        raise HTTPException(
+            status_code=409,
+            detail="Ese nombre de sección ya está en uso. Ingresa uno diferente.",
+        )
     
     nuevo = Seccion(**data.model_dump(), estado=True)
     db.add(nuevo)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Ese nombre de sección ya está en uso. Ingresa uno diferente.",
+        ) from exc
     db.refresh(nuevo)
     return nuevo
 
@@ -48,7 +61,11 @@ def crear_seccion(data: SeccionCreate, db: Session = Depends(get_db)):
     response_model=SeccionResponse,
     dependencies=[Depends(require_roles("Director", "Subdirector", "Secretaria"))],
 )
-def editar_seccion(seccion_id: int, data: SeccionUpdate, db: Session = Depends(get_db)):
+def editar_seccion(
+    seccion_id: Annotated[int, Path(gt=0)],
+    data: SeccionUpdate,
+    db: Session = Depends(get_db),
+):
     seccion = db.get(Seccion, seccion_id)
     if not seccion or not seccion.estado:
         raise HTTPException(status_code=404, detail="Sección no encontrada")
@@ -62,19 +79,27 @@ def editar_seccion(seccion_id: int, data: SeccionUpdate, db: Session = Depends(g
     if db.exec(
         select(Seccion).where(
             Seccion.nombre == final_data["nombre"],
-            Seccion.nivel == final_data["nivel"],
-            Seccion.letra == final_data["letra"],
             Seccion.estado == True,
             Seccion.id_seccion != seccion_id,
         )
     ).first():
-        raise HTTPException(status_code=400, detail="Ya existe una sección con esos datos")
+        raise HTTPException(
+            status_code=409,
+            detail="Ese nombre de sección ya está en uso. Ingresa uno diferente.",
+        )
 
     for key, value in update_data.items():
         setattr(seccion, key, value)
         
     db.add(seccion)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Ese nombre de sección ya está en uso. Ingresa uno diferente.",
+        ) from exc
     db.refresh(seccion)
     return seccion
 
@@ -82,7 +107,7 @@ def editar_seccion(seccion_id: int, data: SeccionUpdate, db: Session = Depends(g
     "/{seccion_id}",
     dependencies=[Depends(require_roles("Director", "Subdirector", "Secretaria"))],
 )
-def eliminar_seccion(seccion_id: int, db: Session = Depends(get_db)):
+def eliminar_seccion(seccion_id: Annotated[int, Path(gt=0)], db: Session = Depends(get_db)):
     seccion = db.get(Seccion, seccion_id)
     if not seccion or not seccion.estado:
         raise HTTPException(status_code=404, detail="Sección no encontrada")

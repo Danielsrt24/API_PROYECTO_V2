@@ -1,6 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from sqlmodel import Session, select
-from typing import List
+from typing import Annotated, List
 from sqlalchemy.exc import IntegrityError
 
 from database import get_db
@@ -15,7 +15,11 @@ router = APIRouter(prefix="/usuarios", tags=["Usuarios"])
     response_model=List[UsuarioResponse],
     dependencies=[Depends(require_roles("Director", "Subdirector"))],
 )
-def listar_usuarios(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+def listar_usuarios(
+    skip: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=0)] = 100,
+    db: Session = Depends(get_db),
+):
     return db.exec(
         select(Usuario).where(Usuario.estado == True).offset(skip).limit(limit)
     ).all()
@@ -25,7 +29,7 @@ def listar_usuarios(skip: int = 0, limit: int = 100, db: Session = Depends(get_d
     response_model=UsuarioResponse,
     dependencies=[Depends(require_roles("Director", "Subdirector"))],
 )
-def obtener_usuario(usuario_id: int, db: Session = Depends(get_db)):
+def obtener_usuario(usuario_id: Annotated[int, Path(gt=0)], db: Session = Depends(get_db)):
     usuario = db.get(Usuario, usuario_id)
     if not usuario or not usuario.estado:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
@@ -39,7 +43,10 @@ def obtener_usuario(usuario_id: int, db: Session = Depends(get_db)):
 )
 def crear_usuario(data: UsuarioCreate, db: Session = Depends(get_db)):
     if db.exec(select(Usuario).where(Usuario.username == data.username)).first():
-        raise HTTPException(status_code=400, detail="El usuario ya existe")
+        raise HTTPException(
+            status_code=409,
+            detail="Ese nombre de usuario ya está en uso. Ingresa uno diferente.",
+        )
 
     nuevo_usuario = Usuario(
         username=data.username,
@@ -67,7 +74,10 @@ def crear_usuario(data: UsuarioCreate, db: Session = Depends(get_db)):
         db.commit()
     except IntegrityError as exc:
         db.rollback()
-        raise HTTPException(status_code=409, detail="No se pudo crear el usuario") from exc
+        raise HTTPException(
+            status_code=409,
+            detail="Ese nombre de usuario ya está en uso. Ingresa uno diferente.",
+        ) from exc
 
     db.refresh(nuevo_usuario)
     return nuevo_usuario
@@ -77,7 +87,11 @@ def crear_usuario(data: UsuarioCreate, db: Session = Depends(get_db)):
     response_model=UsuarioResponse,
     dependencies=[Depends(require_roles("Director", "Subdirector"))],
 )
-def editar_usuario(usuario_id: int, data: UsuarioUpdate, db: Session = Depends(get_db)):
+def editar_usuario(
+    usuario_id: Annotated[int, Path(gt=0)],
+    data: UsuarioUpdate,
+    db: Session = Depends(get_db),
+):
     usuario = db.get(Usuario, usuario_id)
     if not usuario:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
@@ -96,7 +110,7 @@ def editar_usuario(usuario_id: int, data: UsuarioUpdate, db: Session = Depends(g
 
 @router.delete("/{usuario_id}")
 def eliminar_usuario(
-    usuario_id: int,
+    usuario_id: Annotated[int, Path(gt=0)],
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(require_roles("Director")),
 ):

@@ -4,7 +4,7 @@ from datetime import time
 from pydantic import ConfigDict, field_validator
 
 class HorarioBase(SQLModel):
-    id_distribucion: int = Field(foreign_key="distribucion.id_distribucion")
+    id_distribucion: int = Field(gt=0, foreign_key="distribucion.id_distribucion")
     dia: str = Field(min_length=1, max_length=20)
     hora_inicio: time
     hora_fin: time

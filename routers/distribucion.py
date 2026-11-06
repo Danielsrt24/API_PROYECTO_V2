@@ -1,6 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from sqlmodel import Session, select
-from typing import List
+from typing import Annotated, List
 
 from database import get_db
 from models.distribucion import Distribucion, DistribucionCreate, DistribucionUpdate, DistribucionResponse
@@ -12,7 +12,11 @@ from core.authorization import require_roles
 router = APIRouter(prefix="/distribucion", tags=["Distribución"])
 
 @router.get("/", response_model=List[DistribucionResponse])
-def listar_distribucion(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+def listar_distribucion(
+    skip: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=0)] = 100,
+    db: Session = Depends(get_db),
+):
     return db.exec(select(Distribucion).where(Distribucion.estado == True).offset(skip).limit(limit)).all()
 
 @router.post(
@@ -52,7 +56,11 @@ def crear_distribucion(data: DistribucionCreate, db: Session = Depends(get_db)):
     response_model=DistribucionResponse,
     dependencies=[Depends(require_roles("Director"))],
 )
-def editar_distribucion(dist_id: int, data: DistribucionUpdate, db: Session = Depends(get_db)):
+def editar_distribucion(
+    dist_id: Annotated[int, Path(gt=0)],
+    data: DistribucionUpdate,
+    db: Session = Depends(get_db),
+):
     dist = db.get(Distribucion, dist_id)
     if not dist or not dist.estado:
         raise HTTPException(status_code=404, detail="Asignación no encontrada")
@@ -95,7 +103,7 @@ def editar_distribucion(dist_id: int, data: DistribucionUpdate, db: Session = De
     "/{dist_id}",
     dependencies=[Depends(require_roles("Director"))],
 )
-def eliminar_distribucion(dist_id: int, db: Session = Depends(get_db)):
+def eliminar_distribucion(dist_id: Annotated[int, Path(gt=0)], db: Session = Depends(get_db)):
     dist = db.get(Distribucion, dist_id)
     if not dist or not dist.estado:
         raise HTTPException(status_code=404, detail="Asignación no encontrada")

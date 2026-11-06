@@ -78,6 +78,8 @@ class UsuarioUpdate(SQLModel):
     def validar_estado(cls, value: Optional[bool]) -> Optional[bool]:
         if value is None:
             raise ValueError("El estado no puede ser nulo")
+        if isinstance(value, int) and not isinstance(value, bool) and value < 0:
+            raise ValueError("El estado no puede ser negativo")
         return value
 
     @field_validator("nombre", mode="before")

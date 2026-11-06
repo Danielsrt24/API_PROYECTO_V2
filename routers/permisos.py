@@ -3,9 +3,9 @@ import uuid
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
-from typing import Optional
+from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Path as PathParam, UploadFile
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
@@ -92,9 +92,9 @@ def crear_permiso(
     tipo_permiso: str = Form(...),
     fecha_inicio: date = Form(...),
     fecha_fin: date = Form(...),
-    horas_afectadas: Decimal = Form(Decimal("0")),
+    horas_afectadas: Annotated[Decimal, Form(ge=0, le=24)] = Decimal("0"),
     motivo: Optional[str] = Form(None),
-    id_profesor: Optional[int] = Form(None),
+    id_profesor: Annotated[Optional[int], Form(gt=0)] = None,
     comprobante: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
@@ -144,11 +144,13 @@ def crear_permiso(
 
 @router.put("/{permiso_id}", response_model=PermisoResponse)
 def editar_permiso(
-    permiso_id: int,
+    permiso_id: Annotated[int, PathParam(gt=0)],
     tipo_permiso: Optional[str] = Form(None),
     fecha_inicio: Optional[date] = Form(None),
     fecha_fin: Optional[date] = Form(None),
-    horas_afectadas: Optional[Decimal] = Form(None),
+    horas_afectadas: Annotated[
+        Optional[Decimal], Form(ge=0, le=24)
+    ] = None,
     motivo: Optional[str] = Form(None),
     estado: Optional[str] = Form(None),
     comprobante: Optional[UploadFile] = File(None),
@@ -210,7 +212,7 @@ def editar_permiso(
 
 @router.delete("/{permiso_id}")
 def eliminar_permiso(
-    permiso_id: int,
+    permiso_id: Annotated[int, PathParam(gt=0)],
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
