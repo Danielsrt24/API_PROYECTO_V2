@@ -6,7 +6,7 @@ from sqlmodel import SQLModel, create_engine, Session
 # 🔗 URL de conexión a MySQL
 # Formato: mysql+pymysql://usuario:contraseña@host:puerto/base_de_datos
 # (Si tu root de XAMPP no tiene contraseña, déjalo vacío después de los dos puntos)
-DATABASE_URL = "mysql+pymysql://root:@localhost:3306/inda_db"
+DATABASE_URL = "mysql+pymysql://inda_user:Inda2026Segura@localhost:3306/inda_db"
 
 # Crear el motor de la base de datos
 engine = create_engine(DATABASE_URL, echo=False)
