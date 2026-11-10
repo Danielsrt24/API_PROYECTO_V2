@@ -141,16 +141,13 @@ def crear_permiso(
     db.refresh(permiso)
     return permiso
 
-
 @router.put("/{permiso_id}", response_model=PermisoResponse)
 def editar_permiso(
-    permiso_id: Annotated[int, PathParam(gt=0)],
+    permiso_id: int,
     tipo_permiso: Optional[str] = Form(None),
     fecha_inicio: Optional[date] = Form(None),
     fecha_fin: Optional[date] = Form(None),
-    horas_afectadas: Annotated[
-        Optional[Decimal], Form(ge=0, le=24)
-    ] = None,
+    horas_afectadas: Optional[Decimal] = Form(None),
     motivo: Optional[str] = Form(None),
     estado: Optional[str] = Form(None),
     comprobante: Optional[UploadFile] = File(None),
@@ -159,11 +156,11 @@ def editar_permiso(
 ):
     if current_user.rol == "Profesor":
         raise HTTPException(status_code=403, detail="No tienes permisos para editar permisos")
-
+    
     permiso = db.get(Permiso, permiso_id)
     if permiso is None:
         raise HTTPException(status_code=404, detail="Permiso no encontrado")
-
+    
     update_values = {
         "tipo_permiso": tipo_permiso.strip() if tipo_permiso is not None else None,
         "fecha_inicio": fecha_inicio,
@@ -172,22 +169,23 @@ def editar_permiso(
         "motivo": motivo.strip() if motivo is not None else None,
         "estado": estado,
     }
-    data = PermisoUpdate.model_validate(
-        {key: value for key, value in update_values.items() if value is not None}
-    )
-    update_data = data.model_dump(exclude_unset=True)
-    fecha_inicio_final = update_data.get("fecha_inicio", permiso.fecha_inicio)
-    fecha_fin_final = update_data.get("fecha_fin", permiso.fecha_fin)
-    if fecha_fin_final < fecha_inicio_final:
+    
+    # Validar fechas
+    if fecha_inicio and fecha_fin and fecha_fin < fecha_inicio:
         raise HTTPException(
             status_code=422,
             detail="La fecha de fin no puede ser anterior a la fecha de inicio",
         )
-    for field, value in update_data.items():
-        setattr(permiso, field, value)
-
+    
+    # Actualizar solo los campos que no son None
+    for field, value in update_values.items():
+        if value is not None:
+            setattr(permiso, field, value)
+    
+    # Manejar nuevo comprobante
     comprobante_anterior = permiso.comprobante
     comprobante_nuevo = None
+    
     if comprobante is not None:
         comprobante_nuevo = _guardar_comprobante(
             comprobante,
@@ -195,19 +193,23 @@ def editar_permiso(
             permiso.fecha_inicio,
         )
         permiso.comprobante = comprobante_nuevo
-
+    
     db.add(permiso)
+    
     try:
-        db.commit()
+        db.commit()  # ✅ GUARDAR CAMBIOS
+        db.refresh(permiso)  # ✅ REFRESCAR DESDE LA BD
     except IntegrityError as exc:
         db.rollback()
         _eliminar_comprobante(comprobante_nuevo)
         raise HTTPException(status_code=409, detail="No se pudo actualizar el permiso") from exc
-
-    if comprobante_nuevo:
+    
+    # Eliminar comprobante anterior si se subió uno nuevo
+    if comprobante_nuevo and comprobante_anterior:
         _eliminar_comprobante(comprobante_anterior)
-    db.refresh(permiso)
-    return permiso
+    
+    return permiso  # ✅ Retorna los datos ACTUALIZADOS
+
 
 
 @router.delete("/{permiso_id}")

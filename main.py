@@ -26,7 +26,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
+#app.include_router(notas_compat_router, prefix="/api")
 app.include_router(auth_router, prefix="/api")
 app.include_router(usuarios_router, prefix="/api")
 app.include_router(materias_router, prefix="/api")
@@ -36,6 +36,7 @@ app.include_router(horario_router, prefix="/api")
 app.include_router(profesores_router, prefix="/api")
 app.include_router(secciones_router, prefix="/api")  # ✅ NUEVO
 app.include_router(estudiantes.router, prefix="/api")
+#app.include_router(notas_compat_router, prefix="/api")
 @app.get("/")
 def read_root():
     return {"message": "Bienvenido a la API de INDA", "status": "running"}
